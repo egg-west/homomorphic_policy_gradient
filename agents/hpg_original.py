@@ -18,7 +18,6 @@ from agents.drqv2 import RandomShiftsAug
 from models.cnn import PixelEncoder
 from models.core import DeterministicActor, DDPGCritic, RewardPredictor, ActionEncoder, StateEncoder
 from models.transition_model import make_transition_model
-from models.hyper_nets import HyperNet
 import utils.utils as utils
 
 
@@ -70,11 +69,10 @@ class HPGAgent:
                                           hidden_dim, linear_approx).to(self.device)
         self.abstract_critic_target = copy.deepcopy(self.abstract_critic)
 
-        self.action_encoder = HyperNet(state_dim, self.action_dim,
+        self.action_encoder = ActionEncoder(state_dim, self.action_dim,
                                             self.abstract_action_dim, hidden_dim).to(self.device)
         self.state_encoder = StateEncoder(state_dim, self.abstract_state_dim,
                                           hidden_dim).to(self.device)
-
         self.transition_model = make_transition_model(
             transition_model_type, self.abstract_state_dim, self.abstract_action_dim, hidden_dim
         ).to(device)
