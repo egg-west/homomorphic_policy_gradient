@@ -17,6 +17,7 @@ from pathlib import Path
 import hydra
 import numpy as np
 import torch
+import wandb
 from dm_env import specs
 
 import utils.dmc as dmc
@@ -54,6 +55,13 @@ class Workspace:
         self.timer = utils.Timer()
         self._global_step = 0
         self._global_episode = 0
+
+        self.wandb_run = wandb.init(
+            project=f"homomorphic_PG",
+            group=f'{cfg.task}',
+            name=f'{cfg.seed}',
+            #mode="offline"
+        )
 
     def setup(self):
         # some assertions
@@ -143,6 +151,13 @@ class Workspace:
             log('episode_length', step * self.cfg.action_repeat / episode)
             log('episode', self.global_episode)
             log('step', self.global_step)
+        log_dict = {
+            'eval/episode_reward': total_reward / episode,
+            'eval/episode_length': step * self.cfg.action_repeat / episode,
+            'eval/episode': self.global_episode,
+            "eval/global_frame": self.global_frame,
+        }
+        self.wandb_run.log(log_dict, self.global_step)
 
     def train(self, task_id=1):
         # predicates
@@ -180,6 +195,14 @@ class Workspace:
                         log('episode', self.global_episode)
                         log('buffer_size', len(self.replay_storage))
                         log('step', self.global_step)
+                    log_dict = {
+                        'train/fps': episode_frame / elapsed_time,
+                        'train/episode_reward': episode_reward,
+                        'train/episode_length': episode_frame,
+                        'train/episode': self.global_episode,
+                        "train/buffer_size": len(self.replay_storage),
+                    }
+                    self.wandb_run.log(log_dict, self.global_step)
 
                 # reset env
                 time_step = self.train_env.reset()
