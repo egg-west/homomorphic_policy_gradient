@@ -41,6 +41,9 @@ linear_approx: false
 feature_dim: 50
 lifting_weight: 100
 
+#hyper
+use_hyper_net: true
+
 hydra:
   run:
     dir: ./${experiment}/${task_name}/${agent.agent_name}_pixels-${pixel_obs}/seed_${seed}/${now:%Y-%m-%d_%H-%M-%S}/

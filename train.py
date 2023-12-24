@@ -56,9 +56,12 @@ class Workspace:
         self._global_step = 0
         self._global_episode = 0
 
+        group_name = cfg.task_name
+        if cfg.use_hyper_net:
+            group_name += "-hyperNet-"
         self.wandb_run = wandb.init(
             project=f"homomorphic_PG",
-            group=f'{cfg.task_name}',
+            group=f'{group_name}',
             name=f'{cfg.seed}',
             #mode="offline"
         )
