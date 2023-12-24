@@ -38,7 +38,7 @@ class HyperNet(nn.Module):
         # V(s) instead of a bias for the last layers
         self.V = nn.Sequential(nn.Linear(self.state_dim, self.embed_dim),
                                nn.ReLU(),
-                               nn.Linear(self.embed_dim, 1))
+                               nn.Linear(self.embed_dim, self.abs_action_dim))
 
     def forward(self, states, actions):
         bs = states.shape[0]
