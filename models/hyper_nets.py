@@ -47,8 +47,8 @@ class HyperNet(nn.Module):
         b1 = self.hyper_b_1(states)
         w1 = w1.view(-1, self.action_dim, self.embed_dim)
         b1 = b1.view(-1, 1, self.embed_dim)
-        print(f"{w1.shape=}, {actions.shape=}")
-        hidden = F.elu(torch.bmm(actions, w1) + b1)
+        #print(f"{w1.shape=}, {actions.shape=}") # [256, 1, 256] [256, 1]
+        hidden = F.elu(torch.bmm(actions.unsqueeze(1), w1) + b1)
         # Second layer
         #w_final = torch.abs(self.hyper_w_final(states))
         w_final = self.hyper_w_final(states)
