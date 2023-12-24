@@ -4,10 +4,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class HyperNet(nn.Module):
-    def __init__(self, cfg, state_dim, action_dim, abs_action_dim, hidden_dim, hypernet_layers=2):
+    def __init__(self, state_dim, action_dim, abs_action_dim, hidden_dim, hypernet_layers=2):
         super(HyperNet, self).__init__()
 
-        self.args = cfg
+        #self.args = cfg
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.abs_action_dim = abs_action_dim
