@@ -45,13 +45,13 @@ class HyperNet(nn.Module):
         # First layer
         w1 = torch.abs(self.hyper_w_1(states))
         b1 = self.hyper_b_1(states)
-        w1 = w1.view(-1, self.n_agents, self.embed_dim)
+        w1 = w1.view(-1, self.action_dim, self.embed_dim)
         b1 = b1.view(-1, 1, self.embed_dim)
         hidden = F.elu(torch.bmm(actions, w1) + b1)
         # Second layer
         #w_final = torch.abs(self.hyper_w_final(states))
         w_final = self.hyper_w_final(states)
-        w_final = w_final.view(-1, self.embed_dim, 1)
+        w_final = w_final.view(-1, self.embed_dim, self.abs_action_dim)
         # State-dependent bias
         v = self.V(states).view(-1, 1, self.abs_action_dim)
         # Compute final output
