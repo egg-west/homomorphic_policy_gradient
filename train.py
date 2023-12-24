@@ -58,7 +58,7 @@ class Workspace:
 
         self.wandb_run = wandb.init(
             project=f"homomorphic_PG",
-            group=f'{cfg.task}',
+            group=f'{cfg.task_name}',
             name=f'{cfg.seed}',
             #mode="offline"
         )
