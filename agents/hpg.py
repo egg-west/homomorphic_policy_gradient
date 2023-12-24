@@ -30,7 +30,7 @@ class HPGAgent:
     def __init__(self, obs_shape, action_shape, device, lr, feature_dim, abstraction_type,
                  hpg_update_type, transition_model_type, pixel_obs, hidden_dim, linear_approx,
                  matching_dims, critic_target_tau, num_expl_steps, update_every_steps,
-                 stddev_schedule, stddev_clip, clipped_noise, use_aug, homomorphic_coef):
+                 stddev_schedule, stddev_clip, clipped_noise, use_aug, homomorphic_coef, use_hyper_net):
         self.device = device
         self.critic_target_tau = critic_target_tau
         self.update_every_steps = update_every_steps
@@ -70,7 +70,11 @@ class HPGAgent:
                                           hidden_dim, linear_approx).to(self.device)
         self.abstract_critic_target = copy.deepcopy(self.abstract_critic)
 
-        self.action_encoder = HyperNet(state_dim, self.action_dim,
+        if use_hyper_net:
+            self.action_encoder = HyperNet(state_dim, self.action_dim,
+                                                self.abstract_action_dim, hidden_dim).to(self.device)
+        else:
+            self.action_encoder = ActionEncoder(state_dim, self.action_dim,
                                             self.abstract_action_dim, hidden_dim).to(self.device)
         self.state_encoder = StateEncoder(state_dim, self.abstract_state_dim,
                                           hidden_dim).to(self.device)
