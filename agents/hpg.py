@@ -46,6 +46,7 @@ class HPGAgent:
         self.abstraction_type = abstraction_type
         self.hpg_update_type = hpg_update_type
         self.use_aug = use_aug
+        self.use_hyper_net = use_hyper_net
 
         state_dim = feature_dim if pixel_obs else obs_shape[0]
 
