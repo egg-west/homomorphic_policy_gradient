@@ -84,19 +84,31 @@ class UniAE(nn.Module):
         next_obs_recon = self.next_obs_decoder(h)
         a_recon = self.a_decoder(h)
         return h, obs_recon, a_recon, next_obs_recon
-    
+
     def obs_encode(self, obs):
         fake_next_obs = torch.zeros_like(obs).to(obs.device)
         fake_actions = torch.zeros((obs.shape[0], self.a_dim)).to(obs.device)
         # print(f"{obs.device=}") cuda
         #inputs = torch.cat([obs, fake_next_obs, fake_actions], dim=1)
-        h, obs_recon, a_recon, next_obs_recon = self.forward(obs, fake_actions, fake_next_obs)
+        #h, obs_recon, a_recon, next_obs_recon = self.forward(obs, fake_actions, fake_next_obs)
+        obs_embed = self.uni_obs_encoder(obs)
+        next_obs_embed = self.uni_obs_encoder(fake_next_obs)
+        action_embed = self.a_encoder(fake_actions)
+
+        h = torch.cat([obs_embed, next_obs_embed, action_embed], dim=1)
+        h = self.mixer(h)
 
         return h
-    
+
     def obs_action_encode(self, obs, actions):
         fake_next_obs = torch.zeros_like(obs).to(obs.device)
         #inputs = torch.cat([obs, fake_next_obs, actions], dim=1)
-        h, obs_recon, a_recon, next_obs_recon = self.forward(obs, actions, fake_next_obs)
+        #h, obs_recon, a_recon, next_obs_recon = self.forward(obs, actions, fake_next_obs)
+        obs_embed = self.uni_obs_encoder(obs)
+        next_obs_embed = self.uni_obs_encoder(fake_next_obs)
+        action_embed = self.a_encoder(actions)
+
+        h = torch.cat([obs_embed, next_obs_embed, action_embed], dim=1)
+        h = self.mixer(h)
 
         return h
