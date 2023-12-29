@@ -46,6 +46,7 @@ class HPGAgent:
         self.abstraction_type = abstraction_type
         self.hpg_update_type = hpg_update_type
         self.use_aug = use_aug
+        self.use_hyper_net = use_hyper_net
 
         state_dim = feature_dim if pixel_obs else obs_shape[0]
 
@@ -55,7 +56,8 @@ class HPGAgent:
             assert pixel_obs, "Image augmentation is for pixel observations."
 
         self.abstract_state_dim = obs_shape[0] if matching_dims and not pixel_obs else feature_dim
-        self.abstract_action_dim = action_shape[0] if matching_dims else feature_dim
+        #self.abstract_action_dim = action_shape[0] if matching_dims else feature_dim
+        self.abstract_action_dim = 32
 
         # models
         self.actor = DeterministicActor(state_dim, action_shape[0],
@@ -71,8 +73,10 @@ class HPGAgent:
         self.abstract_critic_target = copy.deepcopy(self.abstract_critic)
 
         if use_hyper_net:
+            # self.action_encoder = HyperNet(state_dim, self.action_dim,
+            #                                     self.abstract_action_dim, hidden_dim).to(self.device)
             self.action_encoder = HyperNet(state_dim, self.action_dim,
-                                                self.abstract_action_dim, hidden_dim).to(self.device)
+                                                self.abstract_action_dim, 64).to(self.device)
         else:
             self.action_encoder = ActionEncoder(state_dim, self.action_dim,
                                             self.abstract_action_dim, hidden_dim).to(self.device)
