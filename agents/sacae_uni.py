@@ -55,11 +55,11 @@ class SACAEAgent:
         #self.pixel_decoder = PixelDecoder(obs_shape, feature_dim).to(device)
         self.unified_ae = UniAE(obs_shape, action_shape, feature_dim).to(device)
 
-        self.actor = StochasticActor(feature_dim, action_shape[0], hidden_dim, linear_approx,
+        self.actor = StochasticActor(feature_dim*2, action_shape[0], hidden_dim, linear_approx,
                                      actor_log_std_min, actor_log_std_max).to(device)
 
-        self.critic = Critic(feature_dim, action_shape[0], hidden_dim, linear_approx).to(device)
-        self.critic_target = Critic(feature_dim, action_shape[0], hidden_dim, linear_approx).to(device)
+        self.critic = Critic(feature_dim*2, action_shape[0], hidden_dim, linear_approx).to(device)
+        self.critic_target = Critic(feature_dim*2, action_shape[0], hidden_dim, linear_approx).to(device)
         self.critic_target.load_state_dict(self.critic.state_dict())
 
         self.log_alpha = torch.tensor(np.log(init_temperature)).to(device)
@@ -84,8 +84,9 @@ class SACAEAgent:
 
     def train(self, training=True):
         self.training = training
-        self.pixel_encoder.train(training)
-        self.pixel_decoder.train(training)
+        #self.pixel_encoder.train(training)
+        #self.pixel_decoder.train(training)
+        self.unified_ae.train(training)
         self.actor.train(training)
         self.critic.train(training)
 
@@ -95,7 +96,8 @@ class SACAEAgent:
 
     def act(self, obs, step, eval_mode):
         obs = torch.as_tensor(obs, device=self.device)
-        obs = self.pixel_encoder(obs.unsqueeze(0))
+        #obs = self.pixel_encoder(obs.unsqueeze(0))
+        obs = self.unified_ae.obs_encode(obs.unsqueeze(0))
 
         if eval_mode:
             mu, _, _, _ = self.actor(obs, compute_pi=False, compute_log_pi=False)
@@ -111,7 +113,8 @@ class SACAEAgent:
         obs = torch.as_tensor(obs, device=self.device).float().unsqueeze(0)
         action = torch.as_tensor(action, device=self.device).float().unsqueeze(0)
 
-        obs = self.pixel_encoder(obs)
+        #obs = self.pixel_encoder(obs)
+        obs = self.unified_ae.obs_encode(obs.unsqueeze(0))
         q, _ = self.critic(obs, action)
 
         return {
@@ -175,29 +178,69 @@ class SACAEAgent:
 
         return metrics
 
-    def update_encoder_and_decoder(self, obs, target_obs, step):
+    # def update_encoder_and_decoder(self, obs, target_obs, step):
+    #     metrics = dict()
+
+    #     obs = obs.float()
+    #     target_obs = target_obs.float()
+
+    #     h = self.pixel_encoder(obs)
+    #     if target_obs.dim() == 4:
+    #         # preprocess images to be in [-0.5, 0.5] range
+    #         target_obs = utils.preprocess_obs(target_obs)
+    #     rec_obs = self.pixel_decoder(h)
+    #     rec_loss = F.mse_loss(target_obs, rec_obs)
+
+    #     # add L2 penalty on latent representation
+    #     # see https://arxiv.org/pdf/1903.12436.pdf
+    #     latent_loss = (0.5 * h.pow(2).sum(1)).mean()
+
+    #     loss = rec_loss + self.decoder_latent_lambda * latent_loss
+    #     self.pixel_encoder_opt.zero_grad(set_to_none=True)
+    #     self.pixel_decoder_opt.zero_grad(set_to_none=True)
+    #     loss.backward()
+    #     self.pixel_encoder_opt.step()
+    #     self.pixel_decoder_opt.step()
+
+    #     metrics['ae_loss'] = loss.item()
+
+    #     return metrics
+
+    def update_encoder_and_decoder(self, obs, action, next_obs, step):
         metrics = dict()
+        device = obs.device
 
         obs = obs.float()
-        target_obs = target_obs.float()
+        next_obs = next_obs.float()
+        fake_obs = torch.zeros_like(obs).to(device)
+        fake_action = torch.zeros_like(action).to(device)
+        
+        # generate 3 inputs
+        h1, o1, a1, o1_ = self.unified_ae(obs, action, fake_obs)
+        h2, o2, a2, o2_ = self.unified_ae(obs, fake_action, next_obs)
+        h3, o3, a3, o3_ = self.unified_ae(fake_obs, action, next_obs)
 
-        h = self.pixel_encoder(obs)
-        if target_obs.dim() == 4:
+        #h = self.pixel_encoder(obs)
+        #if target_obs.dim() == 4:
+        if obs.dim() == 4:
             # preprocess images to be in [-0.5, 0.5] range
-            target_obs = utils.preprocess_obs(target_obs)
-        rec_obs = self.pixel_decoder(h)
-        rec_loss = F.mse_loss(target_obs, rec_obs)
+            target_obs = utils.preprocess_obs(obs).detach()
+            target_obs_ = utils.preprocess_obs(next_obs)
+        #rec_obs = self.pixel_decoder(h)
+
+        o_rec_loss = F.mse_loss(o1, target_obs) + F.mse_loss(o2, target_obs) + F.mse_loss(o3, target_obs)
+        a_rec_loss = F.mse_loss(a1, action.detach()) + F.mse_loss(a2, action.detach()) + F.mse_loss(a3, action.detach())
+        o_next_rec_loss = F.mse_loss(o1_, target_obs_) + F.mse_loss(o2_, target_obs_) + F.mse_loss(o3_, target_obs_)
+        rec_loss = o_rec_loss + a_rec_loss + o_next_rec_loss
 
         # add L2 penalty on latent representation
         # see https://arxiv.org/pdf/1903.12436.pdf
-        latent_loss = (0.5 * h.pow(2).sum(1)).mean()
+        latent_loss = (0.5 * h1.pow(2).sum(1)).mean() + (0.5 * h2.pow(2).sum(1)).mean() + (0.5 * h3.pow(2).sum(1)).mean()
 
         loss = rec_loss + self.decoder_latent_lambda * latent_loss
-        self.pixel_encoder_opt.zero_grad(set_to_none=True)
-        self.pixel_decoder_opt.zero_grad(set_to_none=True)
+        self.uae_opt.zero_grad()
         loss.backward()
-        self.pixel_encoder_opt.step()
-        self.pixel_decoder_opt.step()
+        self.uae_opt.step()
 
         metrics['ae_loss'] = loss.item()
 
@@ -216,11 +259,13 @@ class SACAEAgent:
             next_obs = self.aug(next_obs.float())
 
         # encode
-        h = self.pixel_encoder(obs)
+        # h = self.pixel_encoder(obs)
+        # with torch.no_grad():
+        #     next_h = self.pixel_encoder(next_obs)
+
+        h = self.unified_ae.obs_encode(obs)
         with torch.no_grad():
-            next_h = self.pixel_encoder(next_obs)
-        
-        h, obs_embed, action_embed, next_obs_embed = self.UniAE(obs, action, next_obs)
+            next_h = self.unified_ae.obs_encode(next_obs)
 
         metrics['batch_reward'] = reward.mean().item()
 
@@ -239,7 +284,8 @@ class SACAEAgent:
 
         # update encoder and decoder
         if step % self.decoder_update_freq == 0:
-            metrics.update(self.update_encoder_and_decoder(obs, obs, step))
+            #metrics.update(self.update_encoder_and_decoder(obs, obs, step))
+            metrics.update(self.update_encoder_and_decoder(obs, action, next_obs, step))
 
         return metrics
 
@@ -249,8 +295,9 @@ class SACAEAgent:
 
         torch.save(self.actor.state_dict(), f'{model_save_dir}/actor.pt')
         torch.save(self.critic.state_dict(), f'{model_save_dir}/critic.pt')
-        torch.save(self.pixel_encoder.state_dict(), f'{model_save_dir}/pixel_encoder.pt')
-        torch.save(self.pixel_decoder.state_dict(), f'{model_save_dir}/pixel_decoder.pt')
+        #torch.save(self.pixel_encoder.state_dict(), f'{model_save_dir}/pixel_encoder.pt')
+        #torch.save(self.pixel_decoder.state_dict(), f'{model_save_dir}/pixel_decoder.pt')
+        torch.save(self.unified_ae.state_dict(), f'{model_save_dir}/unified_ae.pt')
 
     def load(self, model_dir, step):
         print(f"Loading the model from {model_dir}, step: {step}")
@@ -262,9 +309,12 @@ class SACAEAgent:
         self.critic.load_state_dict(
             torch.load(f'{model_load_dir}/critic.pt', map_location=self.device)
         )
-        self.pixel_encoder.load_state_dict(
-            torch.load(f'{model_load_dir}/pixel_encoder.pt', map_location=self.device)
-        )
-        self.pixel_decoder.load_state_dict(
-            torch.load(f'{model_load_dir}/pixel_decoder.pt', map_location=self.device)
+        # self.pixel_encoder.load_state_dict(
+        #     torch.load(f'{model_load_dir}/pixel_encoder.pt', map_location=self.device)
+        # )
+        # self.pixel_decoder.load_state_dict(
+        #     torch.load(f'{model_load_dir}/pixel_decoder.pt', map_location=self.device)
+        # )
+        self.unified_ae.load_state_dict(
+            torch.load(f'{model_load_dir}/unified_ae.pt', map_location=self.device)
         )
