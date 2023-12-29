@@ -216,7 +216,7 @@ class SACAEAgent:
         next_obs = next_obs.float()
         fake_obs = torch.zeros_like(obs).to(device)
         fake_action = torch.zeros_like(action).to(device)
-        
+
         # generate 3 inputs
         obs_total = torch.cat([obs, obs, fake_obs], dim=0)
         action_total = torch.cat([action, fake_action, action], dim=0)
@@ -251,6 +251,9 @@ class SACAEAgent:
         self.uae_opt.step()
 
         metrics['ae_loss'] = loss.item()
+        metrics['o_rec_loss'] = o_rec_loss.item()
+        metrics['a_rec_loss'] = a_rec_loss.item()
+        metrics['o_next_rec_loss'] = o_next_rec_loss.item()
 
         return metrics
 
