@@ -221,7 +221,7 @@ class SACAEAgent:
         obs_total = torch.cat([obs, obs, fake_obs], dim=0)
         action_total = torch.cat([action, fake_action, action], dim=0)
         next_total = torch.cat([fake_obs, next_obs, next_obs], dim=0)
-        
+
         h, o, a, o_ = self.unified_ae(obs_total, action_total, next_total)
 
         #h = self.pixel_encoder(obs)

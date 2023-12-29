@@ -162,7 +162,7 @@ class Workspace:
             'eval/episode': self.global_episode,
             "eval/global_frame": self.global_frame,
         }
-        self.wandb_run.log(log_dict, self.global_step)
+        self.wandb_run.log(log_dict, self.global_frame)
 
     def train(self, task_id=1):
         # predicates
@@ -207,7 +207,7 @@ class Workspace:
                         'train/episode': self.global_episode,
                         "train/buffer_size": len(self.replay_storage),
                     }
-                    self.wandb_run.log(log_dict, self.global_step)
+                    self.wandb_run.log(log_dict, self.global_frame)
 
                 # reset env
                 time_step = self.train_env.reset()
@@ -237,6 +237,7 @@ class Workspace:
             if not seed_until_step(self.global_step):
                 metrics = self.agent.update(self.replay_iter, self.global_step)
                 self.logger.log_metrics(metrics, self.global_frame, ty='train')
+                self.wandb_run.log({f"train/{k}":metrics[k] for k in metrics}, self.global_frame)
 
             # take env step
             time_step = self.train_env.step(action)
