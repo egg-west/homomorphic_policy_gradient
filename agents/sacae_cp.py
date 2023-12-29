@@ -17,6 +17,7 @@ import torch.nn.functional as F
 
 from models.cnn import PixelEncoder, PixelDecoder
 from models.core import StochasticActor, Critic
+from models.autoencoder import UniAE
 import utils.utils as utils
 
 from agents.drqv2 import RandomShiftsAug
@@ -50,8 +51,10 @@ class SACAEAgent:
         self.use_aug = use_aug
 
         # models
-        self.pixel_encoder = PixelEncoder(obs_shape, feature_dim).to(device)
-        self.pixel_decoder = PixelDecoder(obs_shape, feature_dim).to(device)
+        #self.pixel_encoder = PixelEncoder(obs_shape, feature_dim).to(device)
+        #self.pixel_decoder = PixelDecoder(obs_shape, feature_dim).to(device)
+        self.unified_ae = UniAE(obs_shape, action_shape, feature_dim).to(device)
+
         self.actor = StochasticActor(feature_dim, action_shape[0], hidden_dim, linear_approx,
                                      actor_log_std_min, actor_log_std_max).to(device)
 
@@ -65,9 +68,10 @@ class SACAEAgent:
         self.target_entropy = -np.prod(action_shape)
 
         # optimizers
-        self.pixel_encoder_opt = torch.optim.Adam(self.pixel_encoder.parameters(), lr=lr)
-        self.pixel_decoder_opt = torch.optim.Adam(self.pixel_decoder.parameters(), lr=lr,
-                                                  weight_decay=decoder_weight_lambda)
+        #self.pixel_encoder_opt = torch.optim.Adam(self.pixel_encoder.parameters(), lr=lr)
+        #self.pixel_decoder_opt = torch.optim.Adam(self.pixel_decoder.parameters(), lr=lr,
+        #                                          weight_decay=decoder_weight_lambda)
+        self.uae_opt = torch.optim.AdamW(self.unified_ae.parameters(), lr=lr,)
         self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=lr,betas=(beta, 0.999))
         self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr=lr, betas=(beta, 0.999))
         self.log_alpha_opt = torch.optim.Adam([self.log_alpha], lr=alpha_lr, betas=(alpha_beta, 0.999))
@@ -135,10 +139,8 @@ class SACAEAgent:
 
         # optimize encoder and critic
         self.critic_opt.zero_grad(set_to_none=True)
-        #self.pixel_encoder_opt.zero_grad() # see another file: sacae_fixed
         critic_loss.backward()
         self.critic_opt.step()
-        #self.pixel_encoder_opt.step()
 
         return metrics
 
@@ -217,6 +219,8 @@ class SACAEAgent:
         h = self.pixel_encoder(obs)
         with torch.no_grad():
             next_h = self.pixel_encoder(next_obs)
+        
+        h, obs_embed, action_embed, next_obs_embed = self.UniAE(obs, action, next_obs)
 
         metrics['batch_reward'] = reward.mean().item()
 

@@ -23,4 +23,4 @@ agent:
   homomorphic_coef: 1
   linear_approx: ${linear_approx}
   use_aug: false
-  use_hyper_net: true
+  use_hyper_net: false

@@ -56,10 +56,11 @@ class Workspace:
         self._global_step = 0
         self._global_episode = 0
 
-        group_name = cfg.task_name
+        group_name = f'{self.cfg.agent["agent_name"]}-{cfg.task_name}-pix{self.cfg.pixel_obs}'
         if getattr(self.agent, "use_hyper_net", False):
             if self.agent.use_hyper_net:
                 group_name += "-hyperNet-"
+
         self.wandb_run = wandb.init(
             project=f"homomorphic_PG",
             group=f'{group_name}',

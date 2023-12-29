@@ -135,10 +135,10 @@ class SACAEAgent:
 
         # optimize encoder and critic
         self.critic_opt.zero_grad(set_to_none=True)
-        #self.pixel_encoder_opt.zero_grad() # see another file: sacae_fixed
+        self.pixel_encoder_opt.zero_grad()
         critic_loss.backward()
         self.critic_opt.step()
-        #self.pixel_encoder_opt.step()
+        self.pixel_encoder_opt.step()
 
         return metrics
 
