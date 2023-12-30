@@ -136,6 +136,8 @@ class SACAEAgent:
         # optimize encoder and critic
         self.critic_opt.zero_grad(set_to_none=True)
         self.pixel_encoder_opt.zero_grad()
+        model_grad_norm = torch.nn.utils.clip_grad_norm_(
+            self.pixel_encoder.parameters(), 10)
         critic_loss.backward()
         self.critic_opt.step()
         self.pixel_encoder_opt.step()
@@ -193,6 +195,10 @@ class SACAEAgent:
         loss = rec_loss + self.decoder_latent_lambda * latent_loss
         self.pixel_encoder_opt.zero_grad(set_to_none=True)
         self.pixel_decoder_opt.zero_grad(set_to_none=True)
+        model_grad_norm = torch.nn.utils.clip_grad_norm_(
+            self.pixel_encoder.parameters(), 10)
+        model_grad_norm = torch.nn.utils.clip_grad_norm_(
+            self.pixel_decoder.parameters(), 10)
         loss.backward()
         self.pixel_encoder_opt.step()
         self.pixel_decoder_opt.step()
