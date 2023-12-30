@@ -217,6 +217,47 @@ class Critic(nn.Module):
         q1 = self.Q1_net(sa)
         return q1
 
+class LatentCritic(nn.Module):
+    def __init__(self, feature_dim, action_dim, hidden_dim, linear_approx):
+        super(LatentCritic, self).__init__()
+
+        if linear_approx:
+            self.Q1_net = nn.Linear(feature_dim*2+action_dim, 1)
+            self.Q2_net = nn.Linear(feature_dim*2+action_dim, 1)
+        else:
+            # Q1 architecture
+            self.Q1_net = nn.Sequential(
+                nn.Linear(feature_dim*2+action_dim, hidden_dim),
+                nn.ReLU(inplace=True),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ReLU(inplace=True),
+                nn.Linear(hidden_dim, 1)
+            )
+
+            # Q2 architecture
+            self.Q2_net = nn.Sequential(
+                nn.Linear(feature_dim*2+action_dim, hidden_dim),
+                nn.ReLU(inplace=True),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ReLU(inplace=True),
+                nn.Linear(hidden_dim, 1)
+            )
+
+        self.apply(utils.weight_init)
+
+    def forward(self, state, sa_embed, action):
+        sa = torch.cat([state, sa_embed, action], 1)
+
+        q1 = self.Q1_net(sa)
+        q2 = self.Q2_net(sa)
+        return q1, q2
+
+    def Q1(self, state, action):
+        sa = torch.cat([state, sa_embed, action], 1)
+
+        q1 = self.Q1_net(sa)
+        return q1
+
 
 class DDPGCritic(nn.Module):
     def __init__(self, feature_dim, action_dim, hidden_dim, linear_approx):

@@ -16,7 +16,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from models.cnn import PixelEncoder, PixelDecoder
-from models.core import StochasticActor, Critic
+from models.core import StochasticActor, Critic, LatentCritic
 from models.autoencoder import UniAE
 import utils.utils as utils
 
@@ -55,12 +55,16 @@ class SACAEAgent:
         #self.pixel_encoder = PixelEncoder(obs_shape, feature_dim).to(device)
         #self.pixel_decoder = PixelDecoder(obs_shape, feature_dim).to(device)
         self.unified_ae = UniAE(obs_shape, action_shape, feature_dim).to(device)
+        self.unified_ae_target = UniAE(obs_shape, action_shape, feature_dim).to(device)
+        self.unified_ae_target.load_state_dict(self.unified_ae.state_dict())
 
         self.actor = StochasticActor(feature_dim, action_shape[0], hidden_dim, linear_approx,
                                      actor_log_std_min, actor_log_std_max).to(device)
 
-        self.critic = Critic(feature_dim, action_shape[0], hidden_dim, linear_approx).to(device)
-        self.critic_target = Critic(feature_dim, action_shape[0], hidden_dim, linear_approx).to(device)
+        # self.critic = Critic(feature_dim, action_shape[0], hidden_dim, linear_approx).to(device)
+        # self.critic_target = Critic(feature_dim, action_shape[0], hidden_dim, linear_approx).to(device)
+        self.critic = LatentCritic(feature_dim, action_shape[0], hidden_dim, linear_approx).to(device)
+        self.critic_target = LatentCritic(feature_dim, action_shape[0], hidden_dim, linear_approx).to(device)
         self.critic_target.load_state_dict(self.critic.state_dict())
 
         self.log_alpha = torch.tensor(np.log(init_temperature)).to(device)
@@ -124,17 +128,22 @@ class SACAEAgent:
         }
 
     def update_critic(self, obs, action, reward, discount, next_obs, step):
-        metrics = dict()
+        bs = obs.shape[0]
+        metrics, aux_loss, h = self.update_encoder_and_decoder(obs, action, next_obs, step)
+        next_h = self.unified_ae.obs_encode(next_obs)
+        # metrics.update(m)
+        #metrics = dict()
 
         with torch.no_grad():
-            _, policy_action, log_pi, _ = self.actor(next_obs)
+            _, policy_action, log_pi, _ = self.actor(next_h)
+            next_sa_embed = self.unified_ae.obs_action_encode(next_obs, policy_action)
 
-            target_Q1, target_Q2 = self.critic_target(next_obs, policy_action)
+            target_Q1, target_Q2 = self.critic_target(next_h, next_sa_embed, policy_action)
             target_V = torch.min(target_Q1, target_Q2) - self.alpha.detach() * log_pi
             target_Q = reward + (discount * target_V)
 
-        Q1, Q2 = self.critic(obs, action)
-        critic_loss = F.mse_loss(Q1, target_Q) + F.mse_loss(Q2, target_Q)
+        Q1, Q2 = self.critic(h[bs:], h[:bs], action)
+        critic_loss = F.mse_loss(Q1, target_Q) + F.mse_loss(Q2, target_Q) + 0.1*aux_loss
 
         metrics['critic_target_q'] = target_Q.mean().item()
         metrics['critic_q1'] = Q1.mean().item()
@@ -152,9 +161,14 @@ class SACAEAgent:
 
     def update_actor_and_alpha(self, obs, step):
         metrics = dict()
+        
+        with torch.no_grad():
+            obs_embed = self.unified_ae.obs_encode(obs)
 
-        _, pi, log_pi, log_std = self.actor(obs)
-        Q1, Q2 = self.critic(obs, pi)
+        _, pi, log_pi, log_std = self.actor(obs_embed)
+        with torch.no_grad():
+            sa_embed = self.unified_ae.obs_action_encode(obs, pi)
+        Q1, Q2 = self.critic(obs_embed, sa_embed, pi)
         Q = torch.min(Q1, Q2)
 
         actor_loss = (self.alpha.detach() * log_pi - Q).mean()
@@ -255,12 +269,13 @@ class SACAEAgent:
         #target_obs = target_obs.tile((3, 1))#torch.cat([target_obs for _ in range(3)], dim=0)
         #target_obs_ = target_obs_.tile((3, 1)) #torch.cat([target_obs_ for _ in range(3)], dim=0)
         #target_actions = torch.cat([action.detach() for _ in range(3)], dim=0)
+        target_obs_ = torch.cat([target_obs_, target_obs], dim=0)
 
         #print(f"{o.shape=}, {target_obs.tile((3, 1)).shape=}, {a.shape=}")
         bs = o.shape[0]
         o_rec_loss = F.mse_loss(o[:, :self.obs_shape[0], :, :], target_obs.tile((2, 1, 1, 1)))
         #a_rec_loss = F.mse_loss(a, action.detach().tile((3, 1)))
-        o_next_rec_loss = F.mse_loss(o[:(bs//2), self.obs_shape[0]:, :, :], target_obs_)
+        o_next_rec_loss = F.mse_loss(o[:, self.obs_shape[0]:, :, :], target_obs_)
         rec_loss = o_rec_loss + o_next_rec_loss
 
         # add L2 penalty on latent representation
@@ -268,16 +283,16 @@ class SACAEAgent:
         latent_loss = (0.5 * h.pow(2).sum(1)).mean()
 
         loss = rec_loss + self.decoder_latent_lambda * latent_loss
-        self.uae_opt.zero_grad()
-        loss.backward()
-        self.uae_opt.step()
+        #self.uae_opt.zero_grad()
+        #loss.backward()
+        #self.uae_opt.step()
 
         metrics['ae_loss'] = loss.item()
         metrics['o_rec_loss'] = o_rec_loss.item()
         #metrics['a_rec_loss'] = a_rec_loss.item()
         metrics['o_next_rec_loss'] = o_next_rec_loss.item()
 
-        return metrics
+        return metrics, loss, h
 
     def update(self, replay_iter, step):
         metrics = dict()
@@ -296,29 +311,35 @@ class SACAEAgent:
         # with torch.no_grad():
         #     next_h = self.pixel_encoder(next_obs)
 
-        h = self.unified_ae.obs_encode(obs)
-        with torch.no_grad():
-            next_h = self.unified_ae.obs_encode(next_obs)
+        # h = self.unified_ae.obs_encode(obs)
+        # with torch.no_grad():
+        #     next_h = self.unified_ae.obs_encode(next_obs)
 
         metrics['batch_reward'] = reward.mean().item()
+        
+        # m, aux_loss = self.update_encoder_and_decoder(obs, action, next_obs, step)
+        # metrics.update(m)
 
         # update critic
+        # metrics.update(
+        #     self.update_critic(h, action, reward, discount, next_h, step))
         metrics.update(
-            self.update_critic(h, action, reward, discount, next_h, step))
+            self.update_critic(obs, action, reward, discount, next_obs, step))
 
         # update actor
         if step % self.actor_update_freq == 0:
-            metrics.update(self.update_actor_and_alpha(h.detach(), step))
+            metrics.update(self.update_actor_and_alpha(obs, step))
 
         # update critic target
         if step % self.critic_target_update_freq == 0:
             utils.soft_update_params(self.critic, self.critic_target,
                                      self.critic_target_tau)
+            utils.soft_update_params(self.unified_ae, self.unified_ae_target,
+                                     self.critic_target_tau)
 
         # update encoder and decoder
-        if step % self.decoder_update_freq == 0:
-            #metrics.update(self.update_encoder_and_decoder(obs, obs, step))
-            metrics.update(self.update_encoder_and_decoder(obs, action, next_obs, step))
+        # if step % self.decoder_update_freq == 0:
+        #     metrics.update(self.update_encoder_and_decoder(obs, obs, step))
 
         return metrics
 
