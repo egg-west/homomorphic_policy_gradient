@@ -163,10 +163,11 @@ class SACAEAgent:
         metrics = dict()
         
         with torch.no_grad():
-            obs_embed = self.unified_ae.obs_encode(obs)
+            obs_embed_target = self.unified_ae_target.obs_encode(obs)
 
-        _, pi, log_pi, log_std = self.actor(obs_embed)
+        _, pi, log_pi, log_std = self.actor(obs_embed_target)
         with torch.no_grad():
+            obs_embed = self.unified_ae.obs_encode(obs)
             sa_embed = self.unified_ae.obs_action_encode(obs, pi)
         Q1, Q2 = self.critic(obs_embed, sa_embed, pi)
         Q = torch.min(Q1, Q2)
