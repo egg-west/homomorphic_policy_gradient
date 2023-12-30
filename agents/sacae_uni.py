@@ -154,6 +154,8 @@ class SACAEAgent:
         self.critic_opt.zero_grad(set_to_none=True)
         self.uae_opt.zero_grad()
         critic_loss.backward()
+        model_grad_norm = torch.nn.utils.clip_grad_norm_(
+            self.unified_ae.parameters(), 10)
         self.critic_opt.step()
         self.uae_opt.step()
 
