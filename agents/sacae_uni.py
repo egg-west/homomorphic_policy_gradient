@@ -31,6 +31,7 @@ class SACAEAgent:
                  decoder_update_freq, decoder_latent_lambda, decoder_weight_lambda,
                  num_expl_steps, use_aug):
         self.device = device
+        self.obs_shape = obs_shape
         self.action_dim = action_shape[0]
         self.num_expl_steps = num_expl_steps
         self.critic_target_update_freq = critic_target_update_freq
@@ -55,11 +56,11 @@ class SACAEAgent:
         #self.pixel_decoder = PixelDecoder(obs_shape, feature_dim).to(device)
         self.unified_ae = UniAE(obs_shape, action_shape, feature_dim).to(device)
 
-        self.actor = StochasticActor(feature_dim*2, action_shape[0], hidden_dim, linear_approx,
+        self.actor = StochasticActor(feature_dim, action_shape[0], hidden_dim, linear_approx,
                                      actor_log_std_min, actor_log_std_max).to(device)
 
-        self.critic = Critic(feature_dim*2, action_shape[0], hidden_dim, linear_approx).to(device)
-        self.critic_target = Critic(feature_dim*2, action_shape[0], hidden_dim, linear_approx).to(device)
+        self.critic = Critic(feature_dim, action_shape[0], hidden_dim, linear_approx).to(device)
+        self.critic_target = Critic(feature_dim, action_shape[0], hidden_dim, linear_approx).to(device)
         self.critic_target.load_state_dict(self.critic.state_dict())
 
         self.log_alpha = torch.tensor(np.log(init_temperature)).to(device)
@@ -145,7 +146,7 @@ class SACAEAgent:
         self.uae_opt.zero_grad()
         critic_loss.backward()
         self.critic_opt.step()
-        self.critic_opt.step()
+        self.uae_opt.step()
 
         return metrics
 
@@ -180,31 +181,52 @@ class SACAEAgent:
 
         return metrics
 
-    # def update_encoder_and_decoder(self, obs, target_obs, step):
+    # def update_encoder_and_decoder(self, obs, action, next_obs, step):
     #     metrics = dict()
+    #     device = obs.device
 
     #     obs = obs.float()
-    #     target_obs = target_obs.float()
+    #     next_obs = next_obs.float()
+    #     fake_obs = torch.zeros_like(obs).to(device)
+    #     fake_action = torch.zeros_like(action).to(device)
 
-    #     h = self.pixel_encoder(obs)
-    #     if target_obs.dim() == 4:
+    #     # generate 3 inputs
+    #     obs_total = torch.cat([obs, obs, fake_obs], dim=0)
+    #     action_total = torch.cat([action, fake_action, action], dim=0)
+    #     next_total = torch.cat([fake_obs, next_obs, next_obs], dim=0)
+
+    #     h, o, a, o_ = self.unified_ae(obs_total, action_total, next_total)
+
+    #     #h = self.pixel_encoder(obs)
+    #     #if target_obs.dim() == 4:
+    #     if obs.dim() == 4:
     #         # preprocess images to be in [-0.5, 0.5] range
-    #         target_obs = utils.preprocess_obs(target_obs)
-    #     rec_obs = self.pixel_decoder(h)
-    #     rec_loss = F.mse_loss(target_obs, rec_obs)
+    #         target_obs = utils.preprocess_obs(obs).detach()
+    #         target_obs_ = utils.preprocess_obs(next_obs)
+    #     #rec_obs = self.pixel_decoder(h)
+    #     #target_obs = target_obs.tile((3, 1))#torch.cat([target_obs for _ in range(3)], dim=0)
+    #     #target_obs_ = target_obs_.tile((3, 1)) #torch.cat([target_obs_ for _ in range(3)], dim=0)
+    #     #target_actions = torch.cat([action.detach() for _ in range(3)], dim=0)
+
+    #     #print(f"{o.shape=}, {target_obs.tile((3, 1)).shape=}, {a.shape=}")
+    #     o_rec_loss = F.mse_loss(o, target_obs.tile((3, 1, 1, 1)))
+    #     a_rec_loss = F.mse_loss(a, action.detach().tile((3, 1)))
+    #     o_next_rec_loss = F.mse_loss(o_, target_obs_.tile((3, 1, 1, 1)))
+    #     rec_loss = o_rec_loss + a_rec_loss + o_next_rec_loss
 
     #     # add L2 penalty on latent representation
     #     # see https://arxiv.org/pdf/1903.12436.pdf
     #     latent_loss = (0.5 * h.pow(2).sum(1)).mean()
 
     #     loss = rec_loss + self.decoder_latent_lambda * latent_loss
-    #     self.pixel_encoder_opt.zero_grad(set_to_none=True)
-    #     self.pixel_decoder_opt.zero_grad(set_to_none=True)
+    #     self.uae_opt.zero_grad()
     #     loss.backward()
-    #     self.pixel_encoder_opt.step()
-    #     self.pixel_decoder_opt.step()
+    #     self.uae_opt.step()
 
     #     metrics['ae_loss'] = loss.item()
+    #     metrics['o_rec_loss'] = o_rec_loss.item()
+    #     metrics['a_rec_loss'] = a_rec_loss.item()
+    #     metrics['o_next_rec_loss'] = o_next_rec_loss.item()
 
     #     return metrics
 
@@ -214,15 +236,14 @@ class SACAEAgent:
 
         obs = obs.float()
         next_obs = next_obs.float()
-        fake_obs = torch.zeros_like(obs).to(device)
+        #fake_obs = torch.zeros_like(obs).to(device)
         fake_action = torch.zeros_like(action).to(device)
 
         # generate 3 inputs
-        obs_total = torch.cat([obs, obs, fake_obs], dim=0)
-        action_total = torch.cat([action, fake_action, action], dim=0)
-        next_total = torch.cat([fake_obs, next_obs, next_obs], dim=0)
+        obs_total = torch.cat([obs, obs], dim=0)
+        action_total = torch.cat([action, fake_action], dim=0)
 
-        h, o, a, o_ = self.unified_ae(obs_total, action_total, next_total)
+        h, o = self.unified_ae(obs_total, action_total)
 
         #h = self.pixel_encoder(obs)
         #if target_obs.dim() == 4:
@@ -236,10 +257,11 @@ class SACAEAgent:
         #target_actions = torch.cat([action.detach() for _ in range(3)], dim=0)
 
         #print(f"{o.shape=}, {target_obs.tile((3, 1)).shape=}, {a.shape=}")
-        o_rec_loss = F.mse_loss(o, target_obs.tile((3, 1, 1, 1)))
-        a_rec_loss = F.mse_loss(a, action.detach().tile((3, 1)))
-        o_next_rec_loss = F.mse_loss(o_, target_obs_.tile((3, 1, 1, 1)))
-        rec_loss = o_rec_loss + a_rec_loss + o_next_rec_loss
+        bs = o.shape[0]
+        o_rec_loss = F.mse_loss(o[:, :self.obs_shape[0], :, :], target_obs.tile((2, 1, 1, 1)))
+        #a_rec_loss = F.mse_loss(a, action.detach().tile((3, 1)))
+        o_next_rec_loss = F.mse_loss(o[:(bs//2), self.obs_shape[0]:, :, :], target_obs_)
+        rec_loss = o_rec_loss + o_next_rec_loss
 
         # add L2 penalty on latent representation
         # see https://arxiv.org/pdf/1903.12436.pdf
@@ -252,50 +274,10 @@ class SACAEAgent:
 
         metrics['ae_loss'] = loss.item()
         metrics['o_rec_loss'] = o_rec_loss.item()
-        metrics['a_rec_loss'] = a_rec_loss.item()
+        #metrics['a_rec_loss'] = a_rec_loss.item()
         metrics['o_next_rec_loss'] = o_next_rec_loss.item()
 
         return metrics
-
-    # def update_encoder_and_decoder(self, obs, action, next_obs, step):
-    #     metrics = dict()
-    #     device = obs.device
-
-    #     obs = obs.float()
-    #     next_obs = next_obs.float()
-    #     fake_obs = torch.zeros_like(obs).to(device)
-    #     fake_action = torch.zeros_like(action).to(device)
-        
-    #     # generate 3 inputs
-    #     h1, o1, a1, o1_ = self.unified_ae(obs, action, fake_obs)
-    #     h2, o2, a2, o2_ = self.unified_ae(obs, fake_action, next_obs)
-    #     h3, o3, a3, o3_ = self.unified_ae(fake_obs, action, next_obs)
-
-    #     #h = self.pixel_encoder(obs)
-    #     #if target_obs.dim() == 4:
-    #     if obs.dim() == 4:
-    #         # preprocess images to be in [-0.5, 0.5] range
-    #         target_obs = utils.preprocess_obs(obs).detach()
-    #         target_obs_ = utils.preprocess_obs(next_obs)
-    #     #rec_obs = self.pixel_decoder(h)
-
-    #     o_rec_loss = F.mse_loss(o1, target_obs) + F.mse_loss(o2, target_obs) + F.mse_loss(o3, target_obs)
-    #     a_rec_loss = F.mse_loss(a1, action.detach()) + F.mse_loss(a2, action.detach()) + F.mse_loss(a3, action.detach())
-    #     o_next_rec_loss = F.mse_loss(o1_, target_obs_) + F.mse_loss(o2_, target_obs_) + F.mse_loss(o3_, target_obs_)
-    #     rec_loss = o_rec_loss + a_rec_loss + o_next_rec_loss
-
-    #     # add L2 penalty on latent representation
-    #     # see https://arxiv.org/pdf/1903.12436.pdf
-    #     latent_loss = (0.5 * h1.pow(2).sum(1)).mean() + (0.5 * h2.pow(2).sum(1)).mean() + (0.5 * h3.pow(2).sum(1)).mean()
-
-    #     loss = rec_loss + self.decoder_latent_lambda * latent_loss
-    #     self.uae_opt.zero_grad()
-    #     loss.backward()
-    #     self.uae_opt.step()
-
-    #     metrics['ae_loss'] = loss.item()
-
-    #     return metrics
 
     def update(self, replay_iter, step):
         metrics = dict()
