@@ -15,7 +15,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from models.cnn import PixelEncoder, PixelDecoder
+from models.cnn import PixelEncoder, PixelDecoder, UniPixelDecoder
 from models.core import StochasticActor, Critic, LatentCritic
 from models.autoencoder import UniAE
 import utils.utils as utils

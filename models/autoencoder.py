@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 import utils.utils as utils
-from models.cnn import PixelEncoder, PixelDecoder
+from models.cnn import PixelEncoder, PixelDecoder, UniPixelDecoder
 
 class UniAE(nn.Module):
     def __init__(self, obs_shape, a_dim, feature_dim):
@@ -12,8 +12,8 @@ class UniAE(nn.Module):
         self.a_dim = a_dim[0]
         
         self.uni_obs_encoder = PixelEncoder(obs_shape, feature_dim)
-        self.obs_decoder = PixelDecoder(obs_shape, feature_dim)
-        self.next_obs_decoder = PixelDecoder(obs_shape, feature_dim)
+        self.obs_decoder = UniPixelDecoder(obs_shape, feature_dim)
+        #self.next_obs_decoder = UniPixelDecoder(obs_shape, feature_dim)
         
         self.a_encoder = nn.Sequential(
             nn.Linear(self.a_dim, feature_dim),
