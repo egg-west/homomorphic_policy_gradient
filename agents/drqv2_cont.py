@@ -134,11 +134,11 @@ class DrQV2Agent:
         metrics['critic_loss'] = critic_loss.item()
 
         # optimize encoder and critic
-        self.pixel_encoder_opt.zero_grad(set_to_none=True)
+        #self.pixel_encoder_opt.zero_grad(set_to_none=True)
         self.critic_opt.zero_grad(set_to_none=True)
         critic_loss.backward()
         self.critic_opt.step()
-        self.pixel_encoder_opt.step()
+        #self.pixel_encoder_opt.step()
 
         return metrics
 
@@ -180,8 +180,8 @@ class DrQV2Agent:
         next_obs = self.aug(next_obs.float())
 
         # encode
-        obs = self.pixel_encoder(obs)
         with torch.no_grad():
+            obs = self.pixel_encoder(obs)
             next_obs = self.pixel_encoder(next_obs)
 
         metrics['batch_reward'] = reward.mean().item()
