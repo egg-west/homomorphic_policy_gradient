@@ -161,10 +161,10 @@ class DrQV2Agent:
         Q = torch.min(Q1, Q2)
 
         action = action.reshape((Q.shape[0]//self.n_samples, self.n_samples, 1))
-        action_var = action.var(dim=1).mean()
-        metrics['action_var'] = action_var.item()
+        #action_var = action.var(dim=1).mean()
+        #metrics['action_var'] = action_var.item()
 
-        actor_loss = -Q.mean() + action_var
+        actor_loss = -Q.mean()# + action_var
 
         # optimize actor
         self.actor_opt.zero_grad(set_to_none=True)
