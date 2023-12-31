@@ -1,8 +1,8 @@
-agent_name: sacae_reset
+agent_name: sacae_diff
 discrete_actions: false
 
 agent:
-  _target_: agents.sacae_reset.SACAEAgent
+  _target_: agents.sacae_diff.SACAEAgent
   obs_shape: ??? # to be specified later
   action_shape: ??? # to be specified later
   device: ${device}
@@ -25,4 +25,3 @@ agent:
   feature_dim: ${feature_dim}
   linear_approx: ${linear_approx}
   use_aug: false
-  reset_freq: 200000

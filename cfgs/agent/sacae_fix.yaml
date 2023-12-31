@@ -1,4 +1,4 @@
-agent_name: sacae_fix
+agent_name: sacae_fix_gn
 discrete_actions: false
 
 agent:

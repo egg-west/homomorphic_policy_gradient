@@ -28,7 +28,7 @@ class SACAEAgent:
                  actor_log_std_min, actor_log_std_max, actor_update_freq,
                  critic_target_tau, critic_target_update_freq, encoder_tau,
                  decoder_update_freq, decoder_latent_lambda, decoder_weight_lambda,
-                 num_expl_steps, use_aug, reset_freq):
+                 num_expl_steps, use_aug):
         self.device = device
         self.action_dim = action_shape[0]
         self.num_expl_steps = num_expl_steps
@@ -49,10 +49,11 @@ class SACAEAgent:
         self.init_temperature = init_temperature
         self.use_aug = use_aug
         self.linear_approx = linear_approx
-        self.reset_freq = reset_freq
 
         # models
         self.pixel_encoder = PixelEncoder(obs_shape, feature_dim).to(device)
+        diff_shape = obs_shape
+        diff_shape[0] = diff_shape[0] - 1
         self.pixel_decoder = PixelDecoder(obs_shape, feature_dim).to(device)
         self.actor = StochasticActor(feature_dim, action_shape[0], hidden_dim, linear_approx,
                                      actor_log_std_min, actor_log_std_max).to(device)
@@ -79,24 +80,6 @@ class SACAEAgent:
 
         self.train()
         self.critic_target.train()
-
-    def reset(self):
-        self.actor = StochasticActor(self.feature_dim, self.action_dim, self.hidden_dim, self.linear_approx,
-                                     self.actor_log_std_min, self.actor_log_std_max).to(self.device)
-
-        self.critic = Critic(self.feature_dim, self.action_dim, self.hidden_dim, self.linear_approx).to(self.device)
-        self.critic_target = Critic(self.feature_dim, self.action_dim, self.hidden_dim, self.linear_approx).to(self.device)
-        self.critic_target.load_state_dict(self.critic.state_dict())
-
-        self.log_alpha = torch.tensor(np.log(self.init_temperature)).to(self.device)
-        self.log_alpha.requires_grad = True
-        self.train()
-        self.critic_target.train()
-
-        self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=self.lr,betas=(self.beta, 0.999))
-        self.critic_opt = torch.optim.Adam(self.critic.parameters(), lr=self.lr, betas=(self.beta, 0.999))
-        self.log_alpha_opt = torch.optim.Adam([self.log_alpha], lr=self.alpha_lr, betas=(self.alpha_beta, 0.999))
-        # assert False, "reset test"
 
     def train(self, training=True):
         self.training = training
@@ -156,9 +139,11 @@ class SACAEAgent:
         # optimize encoder and critic
         self.critic_opt.zero_grad(set_to_none=True)
         self.pixel_encoder_opt.zero_grad()
-        model_grad_norm = torch.nn.utils.clip_grad_norm_(
-            self.pixel_encoder.parameters(), 10)
         critic_loss.backward()
+        model_grad_norm = torch.nn.utils.clip_grad_norm_(
+            self.critic.parameters(), 25)
+        model_grad_norm = torch.nn.utils.clip_grad_norm_(
+            self.pixel_encoder.parameters(), 25)
         self.critic_opt.step()
         self.pixel_encoder_opt.step()
 
@@ -206,6 +191,7 @@ class SACAEAgent:
             # preprocess images to be in [-0.5, 0.5] range
             target_obs = utils.preprocess_obs(target_obs)
         rec_obs = self.pixel_decoder(h)
+        target_obs = target_obs[:, 1:, :, :] - target_obs[:, :1, :, :]
         rec_loss = F.mse_loss(target_obs, rec_obs)
 
         # add L2 penalty on latent representation
@@ -215,11 +201,11 @@ class SACAEAgent:
         loss = rec_loss + self.decoder_latent_lambda * latent_loss
         self.pixel_encoder_opt.zero_grad(set_to_none=True)
         self.pixel_decoder_opt.zero_grad(set_to_none=True)
-        model_grad_norm = torch.nn.utils.clip_grad_norm_(
-            self.pixel_encoder.parameters(), 10)
-        model_grad_norm = torch.nn.utils.clip_grad_norm_(
-            self.pixel_decoder.parameters(), 10)
         loss.backward()
+        model_grad_norm = torch.nn.utils.clip_grad_norm_(
+            self.pixel_encoder.parameters(), 25)
+        model_grad_norm = torch.nn.utils.clip_grad_norm_(
+            self.pixel_decoder.parameters(), 25)
         self.pixel_encoder_opt.step()
         self.pixel_decoder_opt.step()
 
@@ -228,9 +214,6 @@ class SACAEAgent:
         return metrics
 
     def update(self, replay_iter, step):
-        if step > 0 and step % self.reset_freq == 0:
-            print(f"{step=}, resetting")
-            self.reset()
         metrics = dict()
 
         batch = next(replay_iter)
