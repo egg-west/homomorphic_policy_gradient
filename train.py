@@ -52,14 +52,16 @@ class Workspace:
         self.agent = make_agent(self.train_env.observation_spec(),
                                 self.train_env.action_spec(),
                                 self.cfg.agent)
+        if cfg.load_encoder:
+            self.agent.load_encoder(cfg.model_dir, cfg.load_step)
         self.timer = utils.Timer()
         self._global_step = 0
         self._global_episode = 0
 
         group_name = f'{self.cfg.agent["agent_name"]}-{cfg.task_name}-pix{self.cfg.pixel_obs}'
-        if getattr(self.agent, "use_hyper_net", False):
-            if self.agent.use_hyper_net:
-                group_name += "-hyperNet-"
+        # if getattr(self.agent, "use_hyper_net", False):
+        #     if self.agent.use_hyper_net:
+        #         group_name += "-hyperNet-"
 
         self.wandb_run = wandb.init(
             project=f"homomorphic_PG",

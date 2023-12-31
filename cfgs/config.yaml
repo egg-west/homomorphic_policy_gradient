@@ -41,8 +41,11 @@ linear_approx: false
 feature_dim: 50
 lifting_weight: 100
 
-#hyper
-use_hyper_net: true
+#customized
+use_hyper_net: false
+load_encoder: true
+load_step: 1000000
+model_dir: ~/homomorphic_policy_gradient/exp/pendulum_swingup/drqv2_pixels-True/seed_3075456/2023-12-31_08-32-06/models
 
 hydra:
   run:
