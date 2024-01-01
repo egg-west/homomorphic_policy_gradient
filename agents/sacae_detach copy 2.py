@@ -30,7 +30,7 @@ class SACAEAgent:
                  actor_log_std_min, actor_log_std_max, actor_update_freq,
                  critic_target_tau, critic_target_update_freq, encoder_target_tau,
                  decoder_update_freq, decoder_latent_lambda, decoder_weight_lambda,
-                 num_expl_steps, use_aug, decoder_update_step):
+                 num_expl_steps, use_aug, decoder_update_epoch):
         self.device = device
         self.action_dim = action_shape[0]
         self.num_expl_steps = num_expl_steps
@@ -50,7 +50,7 @@ class SACAEAgent:
         self.alpha_beta = alpha_beta
         self.init_temperature = init_temperature
         self.use_aug = use_aug
-        self.decoder_update_step = decoder_update_step
+        self.decoder_update_epoch = decoder_update_epoch
         self.obs_shape = obs_shape
         self.decoder_weight_lambda = decoder_weight_lambda
 
@@ -185,19 +185,21 @@ class SACAEAgent:
         return metrics
 
     def update_encoder_and_decoder(self, replay_iter, step):
-        #print("Updating encoder")
+        print("Updating encoder")
         metrics = dict()
-    
+        candidate_encoder = PixelEncoder(self.obs_shape, self.feature_dim).to(self.device)
+        candidate_encoder_opt = torch.optim.Adam(candidate_encoder.parameters(), lr=self.lr)
+        candidate_decoder = PixelDecoder(self.obs_shape, self.feature_dim).to(self.device)
+        candidate_decoder_opt = torch.optim.Adam(candidate_decoder.parameters(), lr=self.lr,
+                                                        weight_decay=self.decoder_weight_lambda)
+        
         # wandb_run_inner = wandb.init(
         #     project=f"sacae_detach",
         #     group=f'test',
         #     name=f'{step}',
         # )
-        tmp_pixel_encoder = PixelEncoder(self.obs_shape, self.feature_dim).to(self.device)
-        tmp_pixel_encoder.load_state_dict(self.pixel_encoder.state_dict())
 
-        #for i in tqdm(range(min(20000, self.decoder_update_epoch * step // 256))):
-        for i in range(self.decoder_update_step):
+        for i in tqdm(range(min(20000, self.decoder_update_epoch * step // 256))):
             batch = next(replay_iter)
             obs, action, reward, discount, next_obs, _ = utils.to_torch(
                 batch, self.device)
@@ -206,41 +208,41 @@ class SACAEAgent:
             target_obs = obs.float()
 
             #==================== Autoencoder Loss ====================#
-            h = self.pixel_encoder(obs)
+            h = candidate_encoder(obs)
             if target_obs.dim() == 4:
                 # preprocess images to be in [-0.5, 0.5] range
                 target_obs = utils.preprocess_obs(target_obs)
-            rec_obs = self.pixel_decoder(h)
-            rec_loss = F.mse_loss(rec_obs, target_obs)
+            rec_obs = candidate_decoder(h)
+            rec_loss = F.mse_loss(target_obs, rec_obs)
 
             # add L2 penalty on latent representation
             # see https://arxiv.org/pdf/1903.12436.pdf
             latent_loss = (0.5 * h.pow(2).sum(1)).mean()
 
             ae_loss = rec_loss + self.decoder_latent_lambda * latent_loss
-
+            
             #==================== Distillation Loss ====================#
             pred_Q1, pred_Q2 = self.critic(h, action)
-            mu, _, log_pi, log_std = self.actor(h)
+            _, pi, log_pi, log_std = self.actor(h)
             with torch.no_grad():
-                target_h = tmp_pixel_encoder(obs)
+                target_h = self.pixel_encoder(obs)
                 target_Q1, target_Q2 = self.critic(target_h, action)
-                target_mu, _, _, target_log_std = self.actor(target_h)
+                _, target_pi, target_log_pi, target_log_std = self.actor(target_h)
             q_dis_loss = F.mse_loss(pred_Q1, target_Q1) + F.mse_loss(pred_Q2, target_Q2)
-            pi_dis_loss = F.mse_loss(mu, target_mu) + F.mse_loss(log_std, target_log_std)
+            pi_dis_loss = F.mse_loss(pi, target_pi)
             distillation_loss = q_dis_loss + 5 * pi_dis_loss
 
-            loss = ae_loss + distillation_loss
+            loss = ae_loss + 0.1 * distillation_loss
 
-            self.pixel_encoder_opt.zero_grad(set_to_none=True)
-            self.pixel_decoder_opt.zero_grad(set_to_none=True)
+            candidate_encoder_opt.zero_grad(set_to_none=True)
+            candidate_decoder_opt.zero_grad(set_to_none=True)
             loss.backward()
             model_grad_norm = torch.nn.utils.clip_grad_norm_(
-                self.pixel_encoder.parameters(), 25)
+                candidate_encoder.parameters(), 25)
             model_grad_norm = torch.nn.utils.clip_grad_norm_(
-                self.pixel_decoder.parameters(), 25)
-            self.pixel_encoder_opt.step()
-            self.pixel_decoder_opt.step()
+                candidate_decoder.parameters(), 25)
+            candidate_encoder_opt.step()
+            candidate_decoder_opt.step()
 
             # log_dict = {
             #     "train/ae_loss": ae_loss.item(),
@@ -252,11 +254,11 @@ class SACAEAgent:
             #wandb_run_inner.log(log_dict, i)
         #wandb_run_inner.finish()
 
-        #self.pixel_encoder = candidate_encoder
-        #self.pixel_encoder_target.load_state_dict(self.pixel_encoder.state_dict())
-        #self.pixel_encoder_opt = candidate_encoder_opt
-        #self.pixel_decoder = candidate_decoder
-        #self.pixel_decoder_opt = candidate_decoder_opt
+        self.pixel_encoder = candidate_encoder
+        self.pixel_encoder_target.load_state_dict(self.pixel_encoder.state_dict())
+        self.pixel_encoder_opt = candidate_encoder_opt
+        self.pixel_decoder = candidate_decoder
+        self.pixel_decoder_opt = candidate_decoder_opt
 
         #metrics['ae_loss'] = loss.item()
         metrics = {
@@ -266,7 +268,7 @@ class SACAEAgent:
             "tot_dis_loss": distillation_loss.item(),
             "tot_loss": loss.item()
         }
-        #print("Encoder updated.")
+        print("Encoder updated.")
         return metrics
 
     def update(self, replay_iter, step):

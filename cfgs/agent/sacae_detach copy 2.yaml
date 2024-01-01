@@ -8,8 +8,7 @@ agent:
   device: ${device}
   lr: ${lr}
   beta: 0.9
-  #alpha_lr: 0.1
-  alpha_lr: 1e-4
+  alpha_lr: 0.1
   alpha_beta: 0.5
   init_temperature: 0.01
   actor_log_std_min: -10
@@ -18,7 +17,7 @@ agent:
   critic_target_tau: 0.01
   critic_target_update_freq: 2
   encoder_target_tau: 0.05
-  decoder_update_freq: 100
+  decoder_update_freq: 10000
   decoder_latent_lambda: 1e-6
   decoder_weight_lambda: 1e-7
   num_expl_steps: 2000
@@ -26,4 +25,4 @@ agent:
   feature_dim: ${feature_dim}
   linear_approx: ${linear_approx}
   use_aug: false
-  decoder_update_step: 20
+  decoder_update_epoch: 60
