@@ -43,7 +43,7 @@ lifting_weight: 100
 
 #customized
 use_hyper_net: false
-load_encoder: true
+load_encoder: false
 load_step: 1000000
 model_dir: ~/homomorphic_policy_gradient/exp/pendulum_swingup/drqv2_pixels-True/seed_3075456/2023-12-31_08-32-06/models
 
