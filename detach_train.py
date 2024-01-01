@@ -238,7 +238,7 @@ class Workspace:
             # try to update the agent
             if not seed_until_step(self.global_step):
                 metrics = self.agent.update(self.replay_iter, self.global_step)
-                self.logger.log_metrics(metrics, self.global_frame, ty='train')
+                #self.logger.log_metrics(metrics, self.global_frame, ty='train')
                 self.wandb_run.log({f"train/{k}":metrics[k] for k in metrics}, self.global_frame)
 
             # take env step
@@ -267,7 +267,7 @@ class Workspace:
 
 @hydra.main(config_path='cfgs', config_name='config')
 def main(cfg):
-    from train import Workspace as W
+    from detach_train import Workspace as W
     root_dir = Path.cwd()
     workspace = W(cfg)
     snapshot = root_dir / 'snapshot.pt'
