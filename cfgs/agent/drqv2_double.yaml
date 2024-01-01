@@ -1,9 +1,9 @@
-agent_name: drqv2_var
+agent_name: drqv2_double
 discrete_actions: false
 batch_size: 64
 
 agent:
-  _target_: agents.drqv2_var.DrQV2Agent
+  _target_: agents.drqv2_double.DrQV2Agent
   obs_shape: ??? # to be specified later
   action_shape: ??? # to be specified later
   device: ${device}
@@ -16,4 +16,3 @@ agent:
   stddev_schedule: ${stddev_schedule}
   stddev_clip: 0.3
   linear_approx: ${linear_approx}
-  n_samples: 4

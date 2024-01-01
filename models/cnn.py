@@ -98,3 +98,20 @@ class UniPixelDecoder(nn.Module):
         deconv = h.view(-1, 32, 35, 35)
         obs = self.deconvnet(deconv)
         return obs
+
+class DoublePixelEncoder(nn.Module):
+    def __init__(self, obs_shape, feature_dim):
+        super().__init__()
+
+        assert len(obs_shape) == 3
+        self.repr_dim = 32 * 35 * 35
+
+        self.encoder1 = PixelEncoder(obs_shape, feature_dim)
+        self.encoder2 = PixelEncoder(obs_shape, feature_dim)
+
+    def forward(self, obs):
+        obs = obs / 255.0 - 0.5
+        h1 = self.encoder1(obs)
+        h2 = self.encoder2(obs)
+        h = torch.cat([h1, h2], dim=1)
+        return h
