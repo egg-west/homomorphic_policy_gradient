@@ -16,7 +16,7 @@ agent:
   actor_update_freq: 2
   critic_target_tau: 0.01
   critic_target_update_freq: 2
-  encoder_target_tau: 0.05
+  encoder_tau: 0.05
   decoder_update_freq: 10000
   decoder_latent_lambda: 1e-6
   decoder_weight_lambda: 1e-7

@@ -28,7 +28,7 @@ class SACAEAgent:
     def __init__(self, obs_shape, action_shape, device, lr, beta, feature_dim,
                  hidden_dim, linear_approx, init_temperature, alpha_lr, alpha_beta,
                  actor_log_std_min, actor_log_std_max, actor_update_freq,
-                 critic_target_tau, critic_target_update_freq, encoder_target_tau,
+                 critic_target_tau, critic_target_update_freq, encoder_tau,
                  decoder_update_freq, decoder_latent_lambda, decoder_weight_lambda,
                  num_expl_steps, use_aug, decoder_update_epoch):
         self.device = device
@@ -36,7 +36,7 @@ class SACAEAgent:
         self.num_expl_steps = num_expl_steps
         self.critic_target_update_freq = critic_target_update_freq
         self.critic_target_tau = critic_target_tau
-        self.encoder_target_tau = encoder_target_tau
+        self.encoder_tau = encoder_tau
         self.decoder_update_freq = decoder_update_freq
         self.decoder_latent_lambda = decoder_latent_lambda
         self.actor_update_freq = actor_update_freq
@@ -56,8 +56,6 @@ class SACAEAgent:
 
         # models
         self.pixel_encoder = PixelEncoder(obs_shape, feature_dim).to(device)
-        self.pixel_encoder_target = PixelEncoder(obs_shape, feature_dim).to(device)
-        self.pixel_encoder_target.load_state_dict(self.pixel_encoder.state_dict())
         self.pixel_decoder = PixelDecoder(obs_shape, feature_dim).to(device)
         self.actor = StochasticActor(feature_dim, action_shape[0], hidden_dim, linear_approx,
                                      actor_log_std_min, actor_log_std_max).to(device)
@@ -122,17 +120,17 @@ class SACAEAgent:
             'value': q.cpu().numpy()[0]
         }
 
-    def update_critic(self, obs_embed, action, reward, discount, next_obs_embed, target_next_obs_embed, step):
+    def update_critic(self, obs, action, reward, discount, next_obs, step):
         metrics = dict()
 
         with torch.no_grad():
-            _, policy_action, log_pi, _ = self.actor(next_obs_embed)
+            _, policy_action, log_pi, _ = self.actor(next_obs)
 
-            target_Q1, target_Q2 = self.critic_target(target_next_obs_embed, policy_action)
+            target_Q1, target_Q2 = self.critic_target(next_obs, policy_action)
             target_V = torch.min(target_Q1, target_Q2) - self.alpha.detach() * log_pi
             target_Q = reward + (discount * target_V)
 
-        Q1, Q2 = self.critic(obs_embed, action)
+        Q1, Q2 = self.critic(obs, action)
         critic_loss = F.mse_loss(Q1, target_Q) + F.mse_loss(Q2, target_Q)
 
         metrics['critic_target_q'] = target_Q.mean().item()
@@ -255,7 +253,6 @@ class SACAEAgent:
         #wandb_run_inner.finish()
 
         self.pixel_encoder = candidate_encoder
-        self.pixel_encoder_target.load_state_dict(self.pixel_encoder.state_dict())
         self.pixel_encoder_opt = candidate_encoder_opt
         self.pixel_decoder = candidate_decoder
         self.pixel_decoder_opt = candidate_decoder_opt
@@ -287,13 +284,12 @@ class SACAEAgent:
         h = self.pixel_encoder(obs)
         with torch.no_grad():
             next_h = self.pixel_encoder(next_obs)
-            target_next_h = self.pixel_encoder_target(next_obs)
 
         metrics['batch_reward'] = reward.mean().item()
 
         # update critic
         metrics.update(
-            self.update_critic(h, action, reward, discount, next_h, target_next_h, step))
+            self.update_critic(h, action, reward, discount, next_h, step))
 
         # update actor
         if step % self.actor_update_freq == 0:
@@ -303,8 +299,6 @@ class SACAEAgent:
         if step % self.critic_target_update_freq == 0:
             utils.soft_update_params(self.critic, self.critic_target,
                                      self.critic_target_tau)
-            utils.soft_update_params(self.pixel_encoder, self.pixel_encoder_target,
-                                     self.encoder_target_tau)
 
         # update encoder and decoder
         if step % self.decoder_update_freq == 0:
