@@ -1,3 +1,7 @@
+# Change Log
+For the SACAE agent, add encoder update in critic update, add target encoder and its soft update.
+
+
 # Continuous MDP Homomorphisms and Homomorphic Policy Gradients
 
 ### Update (May, 12, 2023) 

@@ -197,7 +197,7 @@ class SACAEAgent:
         #     name=f'{step}',
         # )
 
-        for i in tqdm(range(self.decoder_update_epoch * step // 256)):
+        for i in tqdm(range(max(20000, self.decoder_update_epoch * step // 256))):
             batch = next(replay_iter)
             obs, action, reward, discount, next_obs, _ = utils.to_torch(
                 batch, self.device)
